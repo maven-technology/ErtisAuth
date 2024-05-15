@@ -7,7 +7,7 @@ using Ertis.Core.Exceptions;
 using ErtisAuth.Core.Exceptions;
 using ErtisAuth.Core.Models.Identity;
 using Microsoft.AspNetCore.Authentication;
-using ErtisAuth.Abstractions.Services.Interfaces;
+using ErtisAuth.Abstractions.Services;
 using ErtisAuth.Extensions.Authorization.Annotations;
 using ErtisAuth.Extensions.Http.Extensions;
 using ErtisAuth.WebAPI.Extensions;
@@ -68,9 +68,10 @@ namespace ErtisAuth.WebAPI.Auth
 				if (endpoint is RouteEndpoint routeEndpoint)
 				{
 					var authorizedAttribute = routeEndpoint.Metadata.FirstOrDefault(x => x.GetType() == typeof(AuthorizedAttribute));
+					var unauthorizedAttribute = routeEndpoint.Metadata.FirstOrDefault(x => x.GetType() == typeof(UnauthorizedAttribute));
 					if (authorizedAttribute is AuthorizedAttribute)
 					{
-						isAuthorizedEndpoint = true;
+						isAuthorizedEndpoint = unauthorizedAttribute == null;
 					}
 				}
 

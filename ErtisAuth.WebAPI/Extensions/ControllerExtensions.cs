@@ -77,7 +77,13 @@ namespace ErtisAuth.WebAPI.Extensions
 					{
 						var dynamicObject = userService.GetAsync(utilizerSampling.MembershipId, utilizerSampling.Id).ConfigureAwait(false).GetAwaiter().GetResult();
 						var user = dynamicObject.Deserialize<User>();
-						Utilizer utilizer = user; 
+						Utilizer utilizer = user;
+						utilizer.Token = utilizerSampling.Token;
+						utilizer.TokenType = utilizerSampling.TokenType;
+
+						var scopes = utilizerSampling.Scopes?.Where(x => !string.IsNullOrWhiteSpace(x)).ToArray();
+						utilizer.Scopes = scopes is { Length: > 0 } ? scopes : null;
+						
 						return utilizer;
 					}
 				}
@@ -165,6 +171,16 @@ namespace ErtisAuth.WebAPI.Extensions
 		public static UnauthorizedObjectResult InvalidToken(this ControllerBase controller)
 		{
 			return controller.Unauthorized(ErtisAuthException.InvalidToken().Error);
+		}
+		
+		public static BadRequestObjectResult UnsupportedTokenType(this ControllerBase controller)
+		{
+			return controller.BadRequest(ErtisAuthException.UnsupportedTokenType().Error);
+		}
+		
+		public static BadRequestObjectResult BearerTokenRequired(this ControllerBase controller)
+		{
+			return controller.BadRequest(ErtisAuthException.BearerTokenRequired().Error);
 		}
 		
 		public static NotFoundObjectResult ActiveTokenNotFound(this ControllerBase controller, string activeTokenId)

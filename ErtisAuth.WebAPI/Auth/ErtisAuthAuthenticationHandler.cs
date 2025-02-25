@@ -107,6 +107,7 @@ namespace ErtisAuth.WebAPI.Auth
 						new Claim(Utilizer.MembershipIdClaimName, utilizer.MembershipId),
 						new Claim(Utilizer.UtilizerTokenClaimName, utilizer.Token),
 						new Claim(Utilizer.UtilizerTokenTypeClaimName, utilizer.TokenType.ToString()),
+						new Claim(Utilizer.ScopeClaimName, utilizer.Scopes is { Length: > 0 } ? string.Join(" ", utilizer.Scopes.Where(x => !string.IsNullOrWhiteSpace(x))) : string.Empty)
 					}, 
 					null, 
 					"Utilizer", 
@@ -221,6 +222,10 @@ namespace ErtisAuth.WebAPI.Auth
 					
 					userUtilizer.Token = token;
 					userUtilizer.TokenType = _tokenType;
+					
+					var scopes = verifyTokenResult.Scopes?.Where(x => !string.IsNullOrWhiteSpace(x)).ToArray();
+					userUtilizer.Scopes = scopes is { Length: > 0 } ? scopes : null;
+					
 					return userUtilizer;
 				default:
 					throw ErtisAuthException.UnsupportedTokenType();

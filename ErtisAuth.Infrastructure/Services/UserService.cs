@@ -30,6 +30,7 @@ using ErtisAuth.Dto.Models.Users;
 using ErtisAuth.Events.EventArgs;
 using ErtisAuth.Identity.Jwt.Services.Interfaces;
 using ErtisAuth.Infrastructure.Constants;
+using ErtisAuth.Infrastructure.Helpers;
 using ErtisAuth.Infrastructure.Mapping.Extensions;
 using ErtisAuth.Integrations.OAuth.Core;
 using Microsoft.Extensions.Caching.Memory;
@@ -228,19 +229,6 @@ namespace ErtisAuth.Infrastructure.Services
 	        }
             else if (fallbackWithOriginUserType)
             {
-	            // Log model to sentry
-	            if (Sentry.SentrySdk.IsEnabled)
-	            {
-		            var sentryEvent = new Sentry.SentryEvent
-		            {
-			            Message = "CreateUser.GetUserTypeAsync FallbackWithOriginUserType Debug Event"
-		            };
-		            
-		            sentryEvent.SetExtra("model", model.ToDictionary());
-						
-		            Sentry.SentrySdk.CaptureEvent(sentryEvent);
-	            }
-	            
 	            return await this._userTypeService.GetByNameOrSlugAsync(membershipId, "user", true, cancellationToken: cancellationToken);
             }
 	        else
@@ -787,18 +775,6 @@ namespace ErtisAuth.Infrastructure.Services
 	        {
 		        this.SetPasswordHash(model, membership, password);
 	        }
-
-	        if (userType.Slug == UserType.ORIGIN_USER_TYPE_SLUG && Sentry.SentrySdk.IsEnabled)
-	        {
-		        var sentryEvent = new Sentry.SentryEvent
-		        {
-			        Message = "CreateUser Before Repository Debug Event"
-		        };
-		            
-		        sentryEvent.SetExtra("model", model.ToDictionary());
-						
-		        Sentry.SentrySdk.CaptureEvent(sentryEvent);
-	        }
 	        
 	        var created = await base.CreateAsync(model, cancellationToken: cancellationToken);
             this.HidePasswordHash(created);
@@ -1302,7 +1278,7 @@ namespace ErtisAuth.Infrastructure.Services
 		{
 			try
 			{
-				var payload = Encoding.UTF8.GetString(Convert.FromBase64String(resetToken));
+				var payload = Base64Helper.Decode(resetToken, Encoding.UTF8);
 				var parts = payload.Split(':');
 				if (parts.Length > 1)
 				{
@@ -1338,8 +1314,9 @@ namespace ErtisAuth.Infrastructure.Services
 			
 				throw ErtisAuthException.InvalidToken();
 			}
-			catch (FormatException)
+			catch (FormatException ex)
 			{
+				Console.WriteLine(ex);
 				throw ErtisAuthException.InvalidToken();
 			}
 		}

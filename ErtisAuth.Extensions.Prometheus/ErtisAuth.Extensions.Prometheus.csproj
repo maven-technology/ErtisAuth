@@ -7,11 +7,10 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\ErtisAuth.Integrations.OAuth.Abstractions\ErtisAuth.Integrations.OAuth.Abstractions.csproj" />
+        <FrameworkReference Include="Microsoft.AspNetCore.App" Version="5.0.0" />
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.14.0" />
+        <PackageReference Include="prometheus-net.AspNetCore" Version="8.2.1" />
     </ItemGroup>
-
 </Project>

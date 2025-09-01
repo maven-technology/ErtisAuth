@@ -18,11 +18,13 @@ using Ertis.Schema.Serialization;
 using ErtisAuth.Abstractions.Services;
 using ErtisAuth.Dao.Repositories;
 using ErtisAuth.Dao.Repositories.Interfaces;
+using ErtisAuth.Extensions.ApplicationInsights;
 using ErtisAuth.Extensions.Authorization.Constants;
 using ErtisAuth.Extensions.Database;
 using ErtisAuth.Extensions.Hosting;
 using ErtisAuth.Extensions.Mailkit.Extensions;
 using ErtisAuth.Extensions.Mailkit.Serialization;
+using ErtisAuth.Extensions.Prometheus.Extensions;
 using ErtisAuth.Extensions.Quartz.Extensions;
 using ErtisAuth.Identity.Jwt.Services;
 using ErtisAuth.Identity.Jwt.Services.Interfaces;
@@ -34,6 +36,7 @@ using ErtisAuth.WebAPI.Adapters;
 using ErtisAuth.WebAPI.Auth;
 using ErtisAuth.WebAPI.Extensions;
 using ErtisAuth.WebAPI.Helpers;
+using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 using MongoDB.Driver.Core.Events;
 using IMongoDatabase = Ertis.MongoDB.Database.IMongoDatabase;
@@ -160,8 +163,14 @@ else
 	builder.Services.AddSingleton<IGeoLocationService, GeoLocationDisabledService>();
 }
 
+// Prometheus
+builder.Services.AddPrometheus();
+
 builder.Services.AddHttpClient();
 builder.Services.AddHttpContextAccessor();
+
+// Prometheus
+builder.Services.AddPrometheus();
 
 builder.Services.AddCors(options =>
 {
@@ -219,6 +228,16 @@ if (!string.IsNullOrEmpty(sentryDsn))
 	});
 }
 
+// ApplicationInsights
+builder.Services.AddApplicationInsights(builder.Configuration);
+
+// Logging
+builder.Logging.AddJsonConsole(options =>
+{
+	options.IncludeScopes = false;
+	options.TimestampFormat = "HH:mm:ss";
+});
+
 builder.Services
 	.AddControllers()
 	.AddNewtonsoftJson(options =>
@@ -251,11 +270,15 @@ app.UseMailkit();
 app.UseProviders();
 app.UseCors(CORS_POLICY_KEY);
 app.UseHttpsRedirection();
+app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 app.ConfigureGlobalExceptionHandler();
-app.MapControllers();
 
+// Prometheus
+app.UsePrometheus();
+
+app.MapControllers();
 ResolveRequiredServices(app.Services);
 
 app.Run();

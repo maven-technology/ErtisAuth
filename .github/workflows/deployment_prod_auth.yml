@@ -5,19 +5,29 @@ on:
     branches: [ "master" ]
 
 env:
-  AWS_REGION: eu-central-1                # set this to your preferred AWS region, e.g. us-west-1
-  ECR_REPOSITORY: auth                    # set this to your Amazon ECR repository name
-  EKS_CLUSTER: eks-cluster-default        # set this to your Amazon EKS cluster name
+  AWS_REGION: eu-central-1
+  ECR_REPOSITORY: auth
+  EKS_CLUSTER: eks-cluster-default
   ENV: prod
 
 permissions:
   contents: read
 
 jobs:
-  deploy:
-    name: Deploy
-    runs-on: ubuntu-latest
+  build:
+    name: Build (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     environment: production
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
 
     steps:
     - name: Checkout
@@ -30,9 +40,6 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
 
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v3
-
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
@@ -40,18 +47,47 @@ jobs:
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v1
 
-    - name: Build, tag, and push image to Amazon ECR
-      id: build-image
+    - name: Build and push platform image
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         IMAGE_TAG: ${{ github.sha }}
       run: |
         docker buildx build \
-          --platform linux/amd64,linux/arm64 \
+          --platform ${{ matrix.platform }} \
+          -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG-${{ matrix.arch }} \
+          --push .
+
+  merge:
+    name: Create multi-arch manifest and deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Create and push multi-arch manifest
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        docker buildx imagetools create \
           -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
           -t $ECR_REGISTRY/$ECR_REPOSITORY:$ENV \
-          --push .
-        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG-amd64 \
+          $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG-arm64
 
     - name: Publish
       uses: ianbelcher/eks-kubectl-action@master

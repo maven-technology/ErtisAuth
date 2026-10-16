@@ -89,11 +89,46 @@ jobs:
           $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG-amd64 \
           $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG-arm64
 
-    - name: Publish
-      uses: ianbelcher/eks-kubectl-action@master
-      env:
-        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        IMAGE_TAG: ${{ github.sha }}
+    # Deploy through Argo CD (maven-technology/infra docs/gitops.md): commit the new
+    # image to maven-technology/deployments; the cluster syncs it within 3 minutes.
+    # The trigger above is unchanged. Rollback: git revert the commit there.
+    # Never kubectl set image these Deployments: Argo CD sets them back.
+    - name: Token for the deployments repository
+      id: deployments-token
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
       with:
-        cluster_name: ${{ env.EKS_CLUSTER }}
-        args: set image deployment/${{ env.ECR_REPOSITORY }} ${{ env.ECR_REPOSITORY }}=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+        app-id: ${{ vars.DEPLOY_WRITER_APP_ID }}
+        private-key: ${{ secrets.DEPLOY_WRITER_APP_PRIVATE_KEY }}
+        owner: maven-technology
+        repositories: deployments
+
+    - name: Checkout the deployments repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: maven-technology/deployments
+        token: ${{ steps.deployments-token.outputs.token }}
+        path: deployments
+
+    - name: Publish (commit the image to maven-technology/deployments)
+      working-directory: deployments
+      env:
+        IMAGE: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+        TARGETS: auth
+        TARGET_ENVIRONMENT: test
+      run: |
+        set -euo pipefail
+        for TARGET in $TARGETS; do
+          FILE="$TARGET_ENVIRONMENT/$TARGET/deployment.yaml"
+          # The file's only image line is this Deployment's container.
+          sed -i -E "s|^( *image: ).*$|\1${IMAGE}|" "$FILE"
+          [ "$(grep -c "image: ${IMAGE}\$" "$FILE")" = 1 ] || { echo "::error::image not set in $FILE"; exit 1; }
+        done
+        git config user.name "maven-deploy-writer[bot]"
+        git config user.email "342186331+maven-deploy-writer[bot]@users.noreply.github.com"
+        if git diff --quiet; then echo "already at ${IMAGE}"; exit 0; fi
+        git commit -qam "${TARGETS// /, } (${TARGET_ENVIRONMENT}): ${GITHUB_SHA::7} (${GITHUB_REPOSITORY}#${GITHUB_RUN_NUMBER})"
+        for i in 1 2 3 4 5; do
+          git pull --rebase -q && git push -q && exit 0
+          sleep $((i * 3))
+        done
+        exit 1
